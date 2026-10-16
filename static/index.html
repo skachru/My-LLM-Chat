@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Chat</title>
+<!-- Markdown rendering + HTML sanitising. If these fail to load, replies show as plain text. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --sidebar: #f4f4f5; --text: #18181b; --muted: #71717a;
+    --border: #e4e4e7; --user-bubble: #eef2ff; --accent: #4f46e5; --accent-text: #ffffff;
+    --code-bg: #f4f4f5; --danger: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181b; --sidebar: #111113; --text: #f4f4f5; --muted: #a1a1aa;
+      --border: #27272a; --user-bubble: #27272a; --accent: #818cf8; --accent-text: #111113;
+      --code-bg: #27272a; --danger: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; background: var(--bg); color: var(--text);
+         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button { font: inherit; cursor: pointer; }
+
+  /* Sidebar */
+  #sidebar { width: 260px; background: var(--sidebar); border-right: 1px solid var(--border);
+             display: flex; flex-direction: column; flex-shrink: 0; }
+  #new-chat { margin: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+              background: var(--bg); color: var(--text); text-align: left; }
+  #new-chat:hover { border-color: var(--accent); }
+  #conv-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+  .conv { display: flex; align-items: center; border-radius: 6px; padding: 8px 10px; cursor: pointer; }
+  .conv:hover, .conv.active { background: var(--border); }
+  .conv span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .conv .del { visibility: hidden; border: none; background: none; color: var(--muted); padding: 0 4px; }
+  .conv:hover .del { visibility: visible; }
+  .conv .del:hover { color: var(--danger); }
+
+  /* Main area */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #topbar { display: flex; gap: 8px; align-items: center; padding: 10px 16px;
+            border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  #menu-btn { display: none; border: none; background: none; color: var(--text); font-size: 20px; }
+  #model-input { flex: 1; min-width: 180px; max-width: 420px; padding: 7px 10px; border-radius: 6px;
+                 border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  #settings-btn { padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+                  background: var(--bg); color: var(--text); }
+  #model-note { font-size: 13px; color: var(--muted); }
+  #settings { display: none; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  #settings.open { display: block; }
+  #settings label { font-size: 13px; color: var(--muted); }
+  #system-prompt { width: 100%; min-height: 70px; margin: 6px 0; padding: 8px; border-radius: 6px;
+                   border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+
+  #messages { flex: 1; overflow-y: auto; padding: 24px 16px; }
+  .msg { max-width: 760px; margin: 0 auto 18px; }
+  .msg.user .bubble { background: var(--user-bubble); border-radius: 12px; padding: 10px 14px;
+                      margin-left: auto; width: fit-content; max-width: 85%; white-space: pre-wrap; }
+  .msg.assistant .bubble { overflow-wrap: anywhere; }
+  .bubble p:first-child { margin-top: 0; } .bubble p:last-child { margin-bottom: 0; }
+  .bubble pre { background: var(--code-bg); padding: 12px; border-radius: 8px; overflow-x: auto; }
+  .bubble code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; font-size: 0.92em; }
+  .bubble pre code { padding: 0; background: none; }
+  .msg img.attached { max-width: 220px; max-height: 220px; border-radius: 8px; display: block;
+                      margin: 0 0 6px auto; }
+  #empty { text-align: center; color: var(--muted); margin-top: 18vh; }
+
+  /* Composer */
+  #composer { padding: 12px 16px 18px; }
+  #composer-box { max-width: 760px; margin: 0 auto; border: 1px solid var(--border); border-radius: 12px;
+                  padding: 8px; background: var(--bg); }
+  #previews { display: flex; gap: 8px; flex-wrap: wrap; }
+  .preview { position: relative; }
+  .preview img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; margin-bottom: 6px; }
+  .preview button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%;
+                    border: none; background: var(--text); color: var(--bg); font-size: 12px; line-height: 1; }
+  #input-row { display: flex; gap: 8px; align-items: flex-end; }
+  #input { flex: 1; border: none; outline: none; resize: none; background: transparent; color: var(--text);
+           font: inherit; max-height: 200px; padding: 6px; }
+  .icon-btn { border: none; background: none; color: var(--muted); font-size: 20px; padding: 4px 6px; }
+  .icon-btn:hover { color: var(--text); }
+  #send { border: none; border-radius: 8px; background: var(--accent); color: var(--accent-text);
+          padding: 7px 14px; }
+  #send:disabled { opacity: 0.5; cursor: default; }
+  #hint { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 720px) {
+    #sidebar { position: fixed; z-index: 10; height: 100vh; transform: translateX(-100%); transition: transform .2s; }
+    #sidebar.open { transform: none; }
+    #menu-btn { display: block; }
+  }
+</style>
+</head>
+<body>
+<aside id="sidebar">
+  <button id="new-chat">＋ New chat</button>
+  <div id="conv-list"></div>
+</aside>
+
+<main id="main">
+  <div id="topbar">
+    <button id="menu-btn" title="Chats">☰</button>
+    <input id="model-input" list="model-list" placeholder="Model ID, e.g. provider/model-name" autocomplete="off">
+    <datalist id="model-list"></datalist>
+    <button id="settings-btn">System prompt</button>
+    <span id="model-note"></span>
+  </div>
+  <div id="settings">
+    <label for="system-prompt">System prompt (instructions the assistant follows for this chat)</label>
+    <textarea id="system-prompt"></textarea>
+    <button id="save-settings" class="icon-btn" style="font-size:14px">Save</button>
+    <span id="settings-status" style="font-size:13px;color:var(--muted)"></span>
+  </div>
+
+  <div id="messages"><div id="empty">Start a conversation.</div></div>
+
+  <div id="composer">
+    <div id="composer-box">
+      <div id="previews"></div>
+      <div id="input-row">
+        <button id="attach" class="icon-btn" title="Attach image">📎</button>
+        <input type="file" id="file-input" accept="image/*" multiple hidden>
+        <textarea id="input" rows="1" placeholder="Message…"></textarea>
+        <button id="send">Send</button>
+      </div>
+    </div>
+    <div id="hint">Enter to send · Shift+Enter for a new line</div>
+  </div>
+</main>
+
+<script>
+// ---------------- State ----------------
+let config = { default_model: "", default_system_prompt: "" };
+let models = [];            // [{id, name, supports_images}]
+let currentId = null;       // id of the open conversation (null = new, unsaved chat)
+let pendingImages = [];     // data URLs waiting to be sent
+let busy = false;
+
+const $ = (id) => document.getElementById(id);
+
+// Remember the last model used, so new chats start with it.
+function savedModel() { try { return localStorage.getItem("lastModel") || ""; } catch { return ""; } }
+function rememberModel(m) { try { localStorage.setItem("lastModel", m); } catch {} }
+
+// ---------------- Helpers ----------------
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function renderMarkdown(text) {
+  if (window.marked && window.DOMPurify) return DOMPurify.sanitize(marked.parse(text));
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+async function api(path, options = {}) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  return res;
+}
+function scrollToBottom() { const m = $("messages"); m.scrollTop = m.scrollHeight; }
+
+function updateModelNote() {
+  const m = models.find(x => x.id === $("model-input").value.trim());
+  $("model-note").textContent = !m ? "" : (m.supports_images ? "Supports images" : "Text only");
+}
+
+// ---------------- Rendering ----------------
+function addMessage(role, text, images = []) {
+  $("empty")?.remove();
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  for (const url of images) {
+    const img = document.createElement("img");
+    img.src = url; img.className = "attached";
+    div.appendChild(img);
+  }
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  if (role === "user") bubble.textContent = text;
+  else bubble.innerHTML = renderMarkdown(text);
+  if (text || role === "assistant") div.appendChild(bubble);
+  $("messages").appendChild(div);
+  scrollToBottom();
+  return bubble;
+}
+
+async function loadConversationList() {
+  const list = await (await api("/api/conversations")).json();
+  const box = $("conv-list");
+  box.innerHTML = "";
+  for (const c of list) {
+    const row = document.createElement("div");
+    row.className = "conv" + (c.id === currentId ? " active" : "");
+    row.innerHTML = `<span></span><button class="del" title="Delete">✕</button>`;
+    row.querySelector("span").textContent = c.title;
+    row.onclick = () => openConversation(c.id);
+    row.querySelector(".del").onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${c.title}"?`)) return;
+      await api(`/api/conversations/${c.id}`, { method: "DELETE" });
+      if (c.id === currentId) newChat();
+      loadConversationList();
+    };
+    box.appendChild(row);
+  }
+}
+
+async function openConversation(id) {
+  const conv = await (await api(`/api/conversations/${id}`)).json();
+  currentId = conv.id;
+  $("model-input").value = conv.model;
+  $("system-prompt").value = conv.system_prompt;
+  $("messages").innerHTML = "";
+  if (!conv.messages.length) $("messages").innerHTML = '<div id="empty">Start a conversation.</div>';
+  for (const m of conv.messages) addMessage(m.role, m.text, m.images);
+  updateModelNote();
+  $("sidebar").classList.remove("open");
+  loadConversationList();
+}
+
+function newChat() {
+  currentId = null;
+  $("messages").innerHTML = '<div id="empty">Start a conversation.</div>';
+  $("model-input").value = savedModel() || config.default_model;
+  $("system-prompt").value = config.default_system_prompt;
+  updateModelNote();
+  $("sidebar").classList.remove("open");
+  loadConversationList();
+  $("input").focus();
+}
+
+// ---------------- Sending a message ----------------
+async function send() {
+  const text = $("input").value.trim();
+  const images = pendingImages.slice();
+  const model = $("model-input").value.trim();
+  if (busy || (!text && !images.length)) return;
+  if (!model) { alert("Choose a model first (top bar)."); return; }
+
+  const m = models.find(x => x.id === model);
+  if (images.length && m && !m.supports_images &&
+      !confirm("This model may not accept images. Send anyway?")) return;
+
+  busy = true; $("send").disabled = true;
+  $("input").value = ""; autoGrow();
+  pendingImages = []; renderPreviews();
+  rememberModel(model);
+
+  addMessage("user", text, images);
+  const bubble = addMessage("assistant", "");
+  bubble.innerHTML = '<span style="color:var(--muted)">…</span>';
+
+  try {
+    // First message of a new chat: create the conversation.
+    if (currentId === null) {
+      const conv = await (await api("/api/conversations", {
+        method: "POST",
+        body: JSON.stringify({ model, system_prompt: $("system-prompt").value }),
+      })).json();
+      currentId = conv.id;
+    }
+
+    // Send the message and read the reply as it streams in.
+    const res = await api(`/api/conversations/${currentId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ text, images }),
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let reply = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      reply += decoder.decode(value, { stream: true });
+      bubble.innerHTML = renderMarkdown(reply);
+      scrollToBottom();
+    }
+    if (!reply) bubble.textContent = "(No reply received.)";
+  } catch (err) {
+    bubble.textContent = "⚠️ " + err.message;
+  } finally {
+    busy = false; $("send").disabled = false;
+    loadConversationList();
+    $("input").focus();
+  }
+}
+
+// ---------------- Images ----------------
+function renderPreviews() {
+  const box = $("previews");
+  box.innerHTML = "";
+  pendingImages.forEach((url, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "preview";
+    wrap.innerHTML = `<img alt=""><button title="Remove">✕</button>`;
+    wrap.querySelector("img").src = url;
+    wrap.querySelector("button").onclick = () => { pendingImages.splice(i, 1); renderPreviews(); };
+    box.appendChild(wrap);
+  });
+}
+$("file-input").onchange = (e) => {
+  for (const file of e.target.files) {
+    if (pendingImages.length >= 4) { alert("Up to 4 images per message."); break; }
+    if (file.size > 5 * 1024 * 1024) { alert(`${file.name} is over 5 MB.`); continue; }
+    const reader = new FileReader();
+    reader.onload = () => { pendingImages.push(reader.result); renderPreviews(); };
+    reader.readAsDataURL(file);
+  }
+  e.target.value = "";
+};
+$("attach").onclick = () => $("file-input").click();
+
+// ---------------- Other controls ----------------
+function autoGrow() { const t = $("input"); t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
+$("input").addEventListener("input", autoGrow);
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+$("send").onclick = send;
+$("new-chat").onclick = newChat;
+$("menu-btn").onclick = () => $("sidebar").classList.toggle("open");
+$("settings-btn").onclick = () => $("settings").classList.toggle("open");
+
+$("model-input").addEventListener("change", async () => {
+  const model = $("model-input").value.trim();
+  updateModelNote();
+  if (!model) return;
+  rememberModel(model);
+  if (currentId !== null) {
+    await api(`/api/conversations/${currentId}`, { method: "PATCH", body: JSON.stringify({ model }) });
+  }
+});
+
+$("save-settings").onclick = async () => {
+  const system_prompt = $("system-prompt").value;
+  if (currentId !== null) {
+    await api(`/api/conversations/${currentId}`, { method: "PATCH", body: JSON.stringify({ system_prompt }) });
+  }
+  $("settings-status").textContent = currentId ? "Saved for this chat." : "Will be used when this chat starts.";
+  setTimeout(() => $("settings-status").textContent = "", 2500);
+};
+
+// ---------------- Start-up ----------------
+(async function init() {
+  config = await (await api("/api/config")).json();
+  try {
+    models = (await (await api("/api/models")).json()).models;
+    $("model-list").innerHTML = models
+      .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join("");
+  } catch (err) {
+    $("model-note").textContent = "Couldn't load model list — type a model ID.";
+  }
+  newChat();
+})();
+</script>
+</body>
+</html>
