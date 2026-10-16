@@ -1,4 +1,4 @@
-# My Chat — a simple ChatGPT-style app
+# ब्रह्मज्ञान (BrahmaGyaan) — a ChatGPT-style chat app
 
 FastAPI backend + one HTML page. Chats are saved in Postgres (works locally and on
 serverless hosts like Vercel, which don't allow writing to a local SQLite file).
@@ -11,6 +11,8 @@ Models come from OpenRouter.
 * Model picker (searchable list loaded from OpenRouter, or type any model ID)
 * System prompt per chat
 * Image upload (up to 4 images, 5 MB each)
+* Dark/light themes with a toggle that remembers your choice
+* Responsive down to phones, with touch-sized controls
 
 ## Files
 

@@ -64,7 +64,7 @@ BASE_DIR = Path(__file__).parent
 MAX_IMAGES_PER_MESSAGE = 4
 MAX_IMAGE_DATA_URL_LENGTH = 8_000_000  # about a 5-6 MB image once base64-encoded
 
-app = FastAPI(title="Simple Chat App")
+app = FastAPI(title="BrahmaGyaan")
 
 
 # ---------------------------------------------------------------------------

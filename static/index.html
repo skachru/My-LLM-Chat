@@ -2,117 +2,565 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>My Chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F7F7FB" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A0A0F" media="(prefers-color-scheme: dark)">
+<title>ब्रह्मज्ञान</title>
+<script>
+  // Resolve the theme before first paint so there's no flash of the wrong one.
+  (function () {
+    let stored = null;
+    try { stored = localStorage.getItem("theme"); } catch {}
+    const system = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = stored || system;
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Tiro+Devanagari+Hindi&family=Noto+Sans+Devanagari:wght@500;600&display=swap">
 <!-- Markdown rendering + HTML sanitising. If these fail to load, replies show as plain text. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <style>
+  /* ---------------------------------------------------------------
+     1. Design tokens. Light is the base; [data-theme="dark"] swaps
+        them. The head script always sets data-theme explicitly, so
+        no prefers-color-scheme duplication is needed here.
+     --------------------------------------------------------------- */
   :root {
-    --bg: #ffffff; --sidebar: #f4f4f5; --text: #18181b; --muted: #71717a;
-    --border: #e4e4e7; --user-bubble: #eef2ff; --accent: #4f46e5; --accent-text: #ffffff;
-    --code-bg: #f4f4f5; --danger: #dc2626;
+    color-scheme: light;
+    --bg-base: #F7F7FB;
+    --glass: rgba(255, 255, 255, 0.72);
+    --glass-strong: rgba(255, 255, 255, 0.9);
+    --glass-hover: rgba(255, 255, 255, 0.96);
+    --border: rgba(16, 16, 28, 0.09);
+    --border-strong: rgba(16, 16, 28, 0.16);
+    --text: #14141B;
+    --text-dim: #5B5B6B;
+    --text-faint: #8A8A9A;
+    --accent-1: #7C3AED;
+    --accent-2: #0891B2;
+    --accent-ring: rgba(124, 58, 237, 0.22);
+    --accent-text: #FFFFFF;
+    --user-bubble: linear-gradient(135deg, rgba(124, 58, 237, 0.11), rgba(8, 145, 178, 0.09));
+    --user-border: rgba(124, 58, 237, 0.2);
+    --code-bg: rgba(16, 16, 28, 0.05);
+    --danger: #DC2626;
+    --bloom-1: rgba(139, 92, 246, 0.2);
+    --bloom-2: rgba(6, 182, 212, 0.16);
+    --bloom-3: rgba(139, 92, 246, 0.1);
+    --grain: 0.025;
+    --shadow-sm: 0 2px 8px rgba(16, 16, 28, 0.06);
+    --shadow-md: 0 6px 24px -6px rgba(16, 16, 28, 0.14);
+    --shadow-glow: 0 8px 32px -10px rgba(124, 58, 237, 0.4);
+    --blur: 18px;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #18181b; --sidebar: #111113; --text: #f4f4f5; --muted: #a1a1aa;
-      --border: #27272a; --user-bubble: #27272a; --accent: #818cf8; --accent-text: #111113;
-      --code-bg: #27272a; --danger: #f87171;
-    }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg-base: #0A0A0F;
+    --glass: rgba(255, 255, 255, 0.045);
+    --glass-strong: rgba(255, 255, 255, 0.075);
+    --glass-hover: rgba(255, 255, 255, 0.1);
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --text: #F2F2F7;
+    --text-dim: #A2A2B8;
+    --text-faint: #70707F;
+    --accent-1: #8B5CF6;
+    --accent-2: #06B6D4;
+    --accent-ring: rgba(139, 92, 246, 0.3);
+    --accent-text: #FFFFFF;
+    --user-bubble: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.14));
+    --user-border: rgba(139, 92, 246, 0.3);
+    --code-bg: rgba(255, 255, 255, 0.055);
+    --danger: #F87171;
+    --bloom-1: rgba(139, 92, 246, 0.28);
+    --bloom-2: rgba(6, 182, 212, 0.22);
+    --bloom-3: rgba(139, 92, 246, 0.14);
+    --grain: 0.04;
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 8px 32px -8px rgba(0, 0, 0, 0.55);
+    --shadow-glow: 0 8px 36px -10px rgba(139, 92, 246, 0.55);
+    --blur: 20px;
   }
+
+  /* ---------------------------------------------------------------
+     2. Base + the backdrop the glass panels blur against
+     --------------------------------------------------------------- */
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: flex; background: var(--bg); color: var(--text);
-         font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  button { font: inherit; cursor: pointer; }
+  html { background: var(--bg-base); }
+  body {
+    margin: 0; height: 100vh; height: 100dvh; display: flex;
+    background: transparent; color: var(--text);
+    font: 15px/1.6 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Soft colour blooms - these are what make backdrop-filter visible. */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background:
+      radial-gradient(120vmax 90vmax at 28% -14%, var(--bloom-1), transparent 60%),
+      radial-gradient(100vmax 80vmax at 105% 110%, var(--bloom-2), transparent 62%),
+      radial-gradient(70vmax 70vmax at 75% 15%, var(--bloom-3), transparent 65%);
+  }
+  /* Fine grain so the flat areas don't read as dead space. */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    opacity: var(--grain);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
 
-  /* Sidebar */
-  #sidebar { width: 260px; background: var(--sidebar); border-right: 1px solid var(--border);
-             display: flex; flex-direction: column; flex-shrink: 0; }
-  #new-chat { margin: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 8px;
-              background: var(--bg); color: var(--text); text-align: left; }
-  #new-chat:hover { border-color: var(--accent); }
-  #conv-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
-  .conv { display: flex; align-items: center; border-radius: 6px; padding: 8px 10px; cursor: pointer; }
-  .conv:hover, .conv.active { background: var(--border); }
+  button { font: inherit; cursor: pointer; color: inherit; }
+  :focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+
+  /* Thin scrollbars that match the theme */
+  * { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong); background-clip: content-box;
+    border: 3px solid transparent; border-radius: 99px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
+
+  .glass {
+    background: var(--glass);
+    backdrop-filter: blur(var(--blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+  }
+
+  /* ---------------------------------------------------------------
+     3. Sidebar
+     --------------------------------------------------------------- */
+  #sidebar {
+    width: 272px; flex-shrink: 0; display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--glass);
+    backdrop-filter: blur(var(--blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+  }
+  #brand {
+    display: flex; align-items: center; gap: 11px;
+    padding: 17px 16px 14px;
+  }
+  #brand-mark {
+    width: 30px; height: 30px; border-radius: 10px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    color: #fff; display: grid; place-items: center;
+    font-family: "Noto Sans Devanagari", "Nirmala UI", sans-serif;
+    font-size: 17px; line-height: 1; padding-bottom: 1px;
+    box-shadow: var(--shadow-glow);
+  }
+  #brand-name {
+    font-family: "Tiro Devanagari Hindi", "Noto Sans Devanagari", "Nirmala UI", serif;
+    font-size: 19px; line-height: 1.3;
+    background: linear-gradient(120deg, var(--text) 30%, var(--accent-1));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+  #new-chat {
+    margin: 0 12px 10px; padding: 10px 12px; display: flex; align-items: center; gap: 9px;
+    border: 1px solid var(--border); border-radius: 11px;
+    background: var(--glass-strong); color: var(--text); text-align: left;
+    font-weight: 500; font-size: 14px;
+    transition: background 150ms ease, border-color 150ms ease, transform 120ms ease, box-shadow 150ms ease;
+  }
+  #new-chat:hover {
+    background: var(--glass-hover); border-color: var(--border-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  #new-chat:active { transform: scale(0.98); }
+  #new-chat .plus {
+    width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    color: #fff; font-size: 13px; line-height: 1;
+  }
+  #conv-list { flex: 1; overflow-y: auto; padding: 4px 8px 14px; }
+  .conv {
+    position: relative; display: flex; align-items: center; gap: 6px;
+    border-radius: 9px; padding: 8px 8px 8px 11px; cursor: pointer;
+    font-size: 14px; color: var(--text-dim);
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .conv::before {
+    content: ""; position: absolute; left: 3px; top: 50%; translate: 0 -50%;
+    width: 2px; height: 0; border-radius: 99px;
+    background: linear-gradient(180deg, var(--accent-1), var(--accent-2));
+    transition: height 180ms ease;
+  }
+  .conv:hover { background: var(--glass-strong); color: var(--text); }
+  .conv.active { background: var(--glass-strong); color: var(--text); font-weight: 500; }
+  .conv.active::before { height: 17px; }
   .conv span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .conv .del { visibility: hidden; border: none; background: none; color: var(--muted); padding: 0 4px; }
-  .conv:hover .del { visibility: visible; }
-  .conv .del:hover { color: var(--danger); }
+  .conv .del {
+    opacity: 0; pointer-events: none; flex-shrink: 0;
+    border: none; background: none; color: var(--text-faint);
+    padding: 2px 5px; border-radius: 6px; font-size: 12px; line-height: 1;
+    transition: opacity 150ms ease, color 150ms ease, background 150ms ease;
+  }
+  .conv:hover .del, .conv.active .del { opacity: 1; pointer-events: auto; }
+  .conv .del:hover { color: var(--danger); background: var(--glass-hover); }
 
-  /* Main area */
+  /* ---------------------------------------------------------------
+     4. Top bar
+     --------------------------------------------------------------- */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  #topbar { display: flex; gap: 8px; align-items: center; padding: 10px 16px;
-            border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-  #menu-btn { display: none; border: none; background: none; color: var(--text); font-size: 20px; }
-  #model-input { flex: 1; min-width: 180px; max-width: 420px; padding: 7px 10px; border-radius: 6px;
-                 border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-  #settings-btn { padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
-                  background: var(--bg); color: var(--text); }
-  #model-note { font-size: 13px; color: var(--muted); }
-  #settings { display: none; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  #topbar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+    background: var(--glass);
+    backdrop-filter: blur(var(--blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+  }
+  #menu-btn { display: none; }
+  #model-input {
+    flex: 1; min-width: 170px; max-width: 420px;
+    padding: 8px 12px; border-radius: 10px; font: inherit; font-size: 14px;
+    border: 1px solid var(--border); background: var(--glass-strong); color: var(--text);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  }
+  #model-input::placeholder { color: var(--text-faint); }
+  #model-input:hover { border-color: var(--border-strong); }
+  #model-input:focus {
+    outline: none; border-color: var(--accent-1);
+    box-shadow: 0 0 0 3px var(--accent-ring); background: var(--glass-hover);
+  }
+  #model-note {
+    font-size: 12px; color: var(--text-dim); padding: 3px 9px;
+    border: 1px solid var(--border); border-radius: 99px; white-space: nowrap;
+  }
+  #model-note:empty { display: none; }
+  #spacer { flex: 1; }
+  .ghost-btn {
+    display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+    padding: 8px 12px; border-radius: 10px; font-size: 14px;
+    border: 1px solid var(--border); background: var(--glass-strong); color: var(--text-dim);
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 120ms ease;
+  }
+  .ghost-btn:hover { background: var(--glass-hover); border-color: var(--border-strong); color: var(--text); }
+  .ghost-btn:active { transform: scale(0.97); }
+  .ghost-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+  .ghost-btn.square { padding: 8px; }
+  /* Sun shows in dark mode (click -> light), moon in light mode. */
+  #theme-toggle .i-sun { display: none; }
+  :root[data-theme="dark"] #theme-toggle .i-sun { display: block; }
+  :root[data-theme="dark"] #theme-toggle .i-moon { display: none; }
+
+  /* ---------------------------------------------------------------
+     5. System-prompt panel
+     --------------------------------------------------------------- */
+  #settings {
+    display: none; padding: 14px 16px; border-bottom: 1px solid var(--border);
+    background: var(--glass);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    animation: slideDown 200ms ease-out;
+  }
   #settings.open { display: block; }
-  #settings label { font-size: 13px; color: var(--muted); }
-  #system-prompt { width: 100%; min-height: 70px; margin: 6px 0; padding: 8px; border-radius: 6px;
-                   border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  #settings label { font-size: 12px; font-weight: 500; color: var(--text-dim); letter-spacing: 0.01em; }
+  #system-prompt {
+    width: 100%; min-height: 76px; margin: 8px 0; padding: 10px 12px;
+    border-radius: 10px; border: 1px solid var(--border);
+    background: var(--glass-strong); color: var(--text); font: inherit; font-size: 14px;
+    resize: vertical;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  #system-prompt:focus {
+    outline: none; border-color: var(--accent-1); box-shadow: 0 0 0 3px var(--accent-ring);
+  }
+  #save-settings {
+    padding: 7px 16px; border-radius: 9px; border: none; font-size: 13px; font-weight: 500;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2)); color: var(--accent-text);
+    transition: transform 120ms ease, box-shadow 150ms ease, filter 150ms ease;
+  }
+  #save-settings:hover { box-shadow: var(--shadow-glow); filter: brightness(1.06); }
+  #save-settings:active { transform: scale(0.97); }
+  #settings-status { font-size: 13px; color: var(--text-dim); margin-left: 10px; }
 
-  #messages { flex: 1; overflow-y: auto; padding: 24px 16px; }
-  .msg { max-width: 760px; margin: 0 auto 18px; }
-  .msg.user .bubble { background: var(--user-bubble); border-radius: 12px; padding: 10px 14px;
-                      margin-left: auto; width: fit-content; max-width: 85%; white-space: pre-wrap; }
-  .msg.assistant .bubble { overflow-wrap: anywhere; }
-  .bubble p:first-child { margin-top: 0; } .bubble p:last-child { margin-bottom: 0; }
-  .bubble pre { background: var(--code-bg); padding: 12px; border-radius: 8px; overflow-x: auto; }
-  .bubble code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; font-size: 0.92em; }
-  .bubble pre code { padding: 0; background: none; }
-  .msg img.attached { max-width: 220px; max-height: 220px; border-radius: 8px; display: block;
-                      margin: 0 0 6px auto; }
-  #empty { text-align: center; color: var(--muted); margin-top: 18vh; }
+  /* ---------------------------------------------------------------
+     6. Messages
+     --------------------------------------------------------------- */
+  #messages {
+    flex: 1; overflow-y: auto; padding: 28px 16px 8px;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  }
+  .msg { max-width: 760px; margin: 0 auto 20px; animation: msgIn 200ms ease-out both; }
+  .msg.user .bubble {
+    background: var(--user-bubble); border: 1px solid var(--user-border);
+    border-radius: 14px 14px 4px 14px; padding: 11px 15px;
+    margin-left: auto; width: fit-content; max-width: 85%; white-space: pre-wrap;
+    box-shadow: var(--shadow-sm);
+  }
+  .msg.assistant { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 13px; }
+  .msg.assistant::before {
+    content: "\0950"; width: 28px; height: 28px; border-radius: 9px; margin-top: 2px;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    color: #fff; display: grid; place-items: center;
+    font-family: "Noto Sans Devanagari", "Nirmala UI", sans-serif;
+    font-size: 15px; line-height: 1; padding-bottom: 1px;
+    box-shadow: var(--shadow-glow);
+  }
+  .msg.assistant .bubble {
+    min-width: 0; overflow-wrap: anywhere;
+    background: var(--glass); border: 1px solid var(--border);
+    border-radius: 4px 14px 14px 14px; padding: 12px 16px;
+    backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+    box-shadow: var(--shadow-sm);
+  }
+  .bubble p:first-child { margin-top: 0; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble pre {
+    background: var(--code-bg); padding: 13px 15px; border-radius: 10px; overflow-x: auto;
+    border: 1px solid var(--border);
+  }
+  .bubble code {
+    background: var(--code-bg); padding: 2px 5px; border-radius: 5px;
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.87em;
+  }
+  .bubble pre code { padding: 0; background: none; border: none; font-size: 0.86em; line-height: 1.6; }
+  .bubble a { color: var(--accent-1); text-decoration-color: var(--accent-ring); }
+  .bubble table { border-collapse: collapse; width: 100%; font-size: 0.94em; }
+  .bubble th, .bubble td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; }
+  .bubble th { background: var(--code-bg); font-weight: 600; }
+  .bubble blockquote {
+    margin: 0.8em 0; padding-left: 14px; color: var(--text-dim);
+    border-left: 2px solid var(--border-strong);
+  }
+  .bubble hr { border: none; border-top: 1px solid var(--border); margin: 1.2em 0; }
+  .msg img.attached {
+    max-width: 220px; max-height: 220px; border-radius: 10px; display: block;
+    margin: 0 0 8px auto; border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  }
+  /* Blinking cursor on the last line while the reply streams in.
+     Lists get it inside the final <li>, so it doesn't drop to its own row. */
+  .bubble.streaming > :last-child:not(ul):not(ol)::after,
+  .bubble.streaming > :is(ul, ol):last-child > li:last-child::after {
+    content: "\258E"; margin-left: 1px; color: var(--accent-1);
+    animation: blink 1s step-end infinite;
+  }
+  /* Thinking dots, shown until the first token lands */
+  .dots { display: inline-flex; gap: 5px; align-items: center; padding: 3px 0; }
+  .dots i {
+    width: 6px; height: 6px; border-radius: 50%; opacity: 0.55;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    animation: bounce 1.4s ease-in-out infinite;
+  }
+  .dots i:nth-child(2) { animation-delay: 0.16s; }
+  .dots i:nth-child(3) { animation-delay: 0.32s; }
 
-  /* Composer */
-  #composer { padding: 12px 16px 18px; }
-  #composer-box { max-width: 760px; margin: 0 auto; border: 1px solid var(--border); border-radius: 12px;
-                  padding: 8px; background: var(--bg); }
+  #empty {
+    text-align: center; color: var(--text-dim); margin-top: 16vh;
+    animation: msgIn 320ms ease-out both;
+  }
+  #empty::before {
+    content: "\0950"; display: grid; place-items: center;
+    width: 54px; height: 54px; margin: 0 auto 16px; border-radius: 17px;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    color: #fff; box-shadow: var(--shadow-glow);
+    font-family: "Noto Sans Devanagari", "Nirmala UI", sans-serif;
+    font-size: 30px; line-height: 1; padding-bottom: 3px;
+  }
+
+  /* ---------------------------------------------------------------
+     7. Composer
+     --------------------------------------------------------------- */
+  #composer { padding: 10px 16px 20px; }
+  #composer-box {
+    position: relative; max-width: 760px; margin: 0 auto; padding: 9px;
+    border: 1px solid var(--border); border-radius: 16px;
+    background: var(--glass-strong);
+    backdrop-filter: blur(var(--blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--blur)) saturate(150%);
+    box-shadow: var(--shadow-md);
+    transition: box-shadow 200ms ease, border-color 200ms ease;
+  }
+  #composer-box:focus-within {
+    border-color: transparent;
+    box-shadow: var(--shadow-md), 0 0 30px -10px var(--accent-1);
+  }
+  /* Gradient hairline ring that lights up on focus */
+  @supports ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+    #composer-box::before {
+      content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      opacity: 0; transition: opacity 200ms ease; pointer-events: none;
+    }
+    #composer-box:focus-within::before { opacity: 1; }
+  }
   #previews { display: flex; gap: 8px; flex-wrap: wrap; }
-  .preview { position: relative; }
-  .preview img { width: 64px; height: 64px; object-fit: cover; border-radius: 6px; margin-bottom: 6px; }
-  .preview button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%;
-                    border: none; background: var(--text); color: var(--bg); font-size: 12px; line-height: 1; }
-  #input-row { display: flex; gap: 8px; align-items: flex-end; }
-  #input { flex: 1; border: none; outline: none; resize: none; background: transparent; color: var(--text);
-           font: inherit; max-height: 200px; padding: 6px; }
-  .icon-btn { border: none; background: none; color: var(--muted); font-size: 20px; padding: 4px 6px; }
-  .icon-btn:hover { color: var(--text); }
-  #send { border: none; border-radius: 8px; background: var(--accent); color: var(--accent-text);
-          padding: 7px 14px; }
-  #send:disabled { opacity: 0.5; cursor: default; }
-  #hint { max-width: 760px; margin: 6px auto 0; font-size: 12px; color: var(--muted); }
+  .preview { position: relative; animation: msgIn 180ms ease-out both; }
+  .preview img {
+    width: 62px; height: 62px; object-fit: cover; border-radius: 9px; margin-bottom: 7px;
+    border: 1px solid var(--border);
+  }
+  .preview button {
+    position: absolute; top: -5px; right: -5px; width: 19px; height: 19px;
+    border-radius: 50%; border: none; font-size: 11px; line-height: 1;
+    background: var(--text); color: var(--bg-base);
+    transition: transform 120ms ease, filter 150ms ease;
+  }
+  .preview button:hover { filter: brightness(1.15); }
+  .preview button:active { transform: scale(0.9); }
+  #input-row { display: flex; gap: 7px; align-items: flex-end; }
+  #input {
+    flex: 1; border: none; outline: none; resize: none; background: transparent;
+    color: var(--text); font: inherit; max-height: 200px; padding: 8px 4px;
+  }
+  #input::placeholder { color: var(--text-faint); }
+  .icon-btn {
+    border: none; background: none; color: var(--text-faint);
+    padding: 7px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0;
+    transition: color 150ms ease, background 150ms ease, transform 120ms ease;
+  }
+  .icon-btn svg { width: 19px; height: 19px; }
+  .icon-btn:hover { color: var(--text); background: var(--glass-hover); }
+  .icon-btn:active { transform: scale(0.94); }
+  #send {
+    border: none; border-radius: 11px; padding: 0; flex-shrink: 0;
+    width: 36px; height: 36px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    color: var(--accent-text); box-shadow: var(--shadow-glow);
+    transition: transform 120ms ease, filter 150ms ease, box-shadow 200ms ease, opacity 150ms ease;
+  }
+  #send svg { width: 18px; height: 18px; }
+  #send:hover:not(:disabled) { filter: brightness(1.08); }
+  #send:active:not(:disabled) { transform: scale(0.94); }
+  #send:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
+  #hint { max-width: 760px; margin: 9px auto 0; font-size: 12px; color: var(--text-faint); }
+  .hint-touch { display: none; }
+  kbd {
+    font: inherit; font-size: 11px; padding: 2px 6px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--glass-strong); color: var(--text-dim);
+  }
 
-  @media (max-width: 720px) {
-    #sidebar { position: fixed; z-index: 10; height: 100vh; transform: translateX(-100%); transition: transform .2s; }
+  /* Mobile nav scrim */
+  #scrim {
+    position: fixed; inset: 0; z-index: 9; opacity: 0; pointer-events: none;
+    background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(2px);
+    transition: opacity 240ms ease;
+  }
+  body.nav-open #scrim { opacity: 1; pointer-events: auto; }
+
+  /* ---------------------------------------------------------------
+     8. Motion
+     --------------------------------------------------------------- */
+  @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  /* ---------------------------------------------------------------
+     9. Responsive: tablet (<=900px) collapses the sidebar into an
+        overlay; phones (<=620px) restack the top bar.
+     --------------------------------------------------------------- */
+  @media (max-width: 900px) {
+    #sidebar {
+      position: fixed; z-index: 10; height: 100vh; height: 100dvh;
+      width: min(292px, 84vw);
+      transform: translateX(-100%); transition: transform 240ms ease;
+      box-shadow: var(--shadow-md);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
     #sidebar.open { transform: none; }
-    #menu-btn { display: block; }
+    #menu-btn { display: flex; }
+    #settings-label { display: none; }
+    /* 16px stops iOS Safari from zooming in when a field gets focus. */
+    #model-input, #input, #system-prompt { font-size: 16px; }
+  }
+  @media (min-width: 901px) { #scrim { display: none; } }
+
+  /* Tablet portrait: give the conversation a little more room */
+  @media (max-width: 900px) and (min-width: 621px) {
+    #messages { padding: 24px 24px 8px; }
+    #composer { padding-left: 24px; padding-right: 24px; }
+  }
+
+  @media (max-width: 620px) {
+    #topbar { padding: 9px 11px; gap: 7px; }
+    #spacer { display: none; }
+    #menu-btn { order: 1; }
+    /* basis 0 so it yields space to the buttons instead of wrapping them */
+    #model-input { order: 2; flex: 1 1 0; min-width: 0; max-width: none; }
+    #settings-btn { order: 3; }
+    #theme-toggle { order: 4; }
+    #model-note { order: 5; flex: 0 0 auto; }
+    #messages { padding: 18px 12px 4px; }
+    .msg { margin-bottom: 17px; }
+    .msg.assistant { grid-template-columns: 25px minmax(0, 1fr); gap: 10px; }
+    .msg.assistant::before { width: 25px; height: 25px; border-radius: 8px; font-size: 13px; }
+    .msg.assistant .bubble { padding: 11px 13px; }
+    .msg.user .bubble { max-width: 90%; }
+    .msg img.attached { max-width: 60vw; }
+    #composer { padding: 8px 12px 14px; }
+    #input { max-height: 140px; }
+    #empty { margin-top: 12vh; }
+    #settings { padding: 12px; }
+  }
+
+  /* Touch devices: no hover, so hit areas grow and row actions stay visible */
+  @media (pointer: coarse) {
+    .icon-btn { padding: 10px; }
+    .ghost-btn { padding: 10px 13px; }
+    .ghost-btn.square { padding: 10px; }
+    #send { width: 42px; height: 42px; }
+    #new-chat { padding: 12px; }
+    .conv { padding: 11px 8px 11px 11px; }
+    .conv .del { opacity: 1; pointer-events: auto; padding: 7px 8px; }
+    .hint-keys { display: none; }
+    .hint-touch { display: inline; }
+  }
+
+  /* Keep the composer clear of the home indicator on notched phones */
+  @supports (padding: env(safe-area-inset-bottom)) {
+    #composer { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 </style>
 </head>
 <body>
+<div id="scrim"></div>
+
 <aside id="sidebar">
-  <button id="new-chat">＋ New chat</button>
+  <div id="brand"><span id="brand-mark">&#2384;</span><span id="brand-name">ब्रह्मज्ञान</span></div>
+  <button id="new-chat"><span class="plus">&#43;</span>New chat</button>
   <div id="conv-list"></div>
 </aside>
 
 <main id="main">
   <div id="topbar">
-    <button id="menu-btn" title="Chats">☰</button>
+    <button id="menu-btn" class="ghost-btn square" title="Chats" aria-label="Chats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </button>
     <input id="model-input" list="model-list" placeholder="Model ID, e.g. provider/model-name" autocomplete="off">
     <datalist id="model-list"></datalist>
-    <button id="settings-btn">System prompt</button>
     <span id="model-note"></span>
+    <span id="spacer"></span>
+    <button id="settings-btn" class="ghost-btn" title="System prompt">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      <span id="settings-label">System prompt</span>
+    </button>
+    <button id="theme-toggle" class="ghost-btn square" title="Switch theme" aria-label="Switch theme">
+      <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v2M12 20.5v2M3.9 3.9l1.5 1.5M18.6 18.6l1.5 1.5M1.5 12h2M20.5 12h2M3.9 20.1l1.5-1.5M18.6 5.4l1.5-1.5"/></svg>
+      <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+    </button>
   </div>
   <div id="settings">
     <label for="system-prompt">System prompt (instructions the assistant follows for this chat)</label>
     <textarea id="system-prompt"></textarea>
-    <button id="save-settings" class="icon-btn" style="font-size:14px">Save</button>
-    <span id="settings-status" style="font-size:13px;color:var(--muted)"></span>
+    <button id="save-settings">Save</button>
+    <span id="settings-status"></span>
   </div>
 
   <div id="messages"><div id="empty">Start a conversation.</div></div>
@@ -121,13 +569,20 @@
     <div id="composer-box">
       <div id="previews"></div>
       <div id="input-row">
-        <button id="attach" class="icon-btn" title="Attach image">📎</button>
+        <button id="attach" class="icon-btn" title="Attach image" aria-label="Attach image">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
         <input type="file" id="file-input" accept="image/*" multiple hidden>
         <textarea id="input" rows="1" placeholder="Message…"></textarea>
-        <button id="send">Send</button>
+        <button id="send" title="Send message" aria-label="Send message">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
       </div>
     </div>
-    <div id="hint">Enter to send · Shift+Enter for a new line</div>
+    <div id="hint">
+      <span class="hint-keys"><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
+      <span class="hint-touch">Tap ↑ to send</span>
+    </div>
   </div>
 </main>
 
@@ -163,6 +618,10 @@ async function api(path, options = {}) {
   return res;
 }
 function scrollToBottom() { const m = $("messages"); m.scrollTop = m.scrollHeight; }
+function setNav(open) {
+  $("sidebar").classList.toggle("open", open);
+  document.body.classList.toggle("nav-open", open);
+}
 
 function updateModelNote() {
   const m = models.find(x => x.id === $("model-input").value.trim());
@@ -219,7 +678,7 @@ async function openConversation(id) {
   if (!conv.messages.length) $("messages").innerHTML = '<div id="empty">Start a conversation.</div>';
   for (const m of conv.messages) addMessage(m.role, m.text, m.images);
   updateModelNote();
-  $("sidebar").classList.remove("open");
+  setNav(false);
   loadConversationList();
 }
 
@@ -229,7 +688,7 @@ function newChat() {
   $("model-input").value = savedModel() || config.default_model;
   $("system-prompt").value = config.default_system_prompt;
   updateModelNote();
-  $("sidebar").classList.remove("open");
+  setNav(false);
   loadConversationList();
   $("input").focus();
 }
@@ -253,7 +712,7 @@ async function send() {
 
   addMessage("user", text, images);
   const bubble = addMessage("assistant", "");
-  bubble.innerHTML = '<span style="color:var(--muted)">…</span>';
+  bubble.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
 
   try {
     // First message of a new chat: create the conversation.
@@ -277,6 +736,7 @@ async function send() {
       const { done, value } = await reader.read();
       if (done) break;
       reply += decoder.decode(value, { stream: true });
+      bubble.classList.add("streaming");   // swaps the dots for a blinking cursor
       bubble.innerHTML = renderMarkdown(reply);
       scrollToBottom();
     }
@@ -284,6 +744,7 @@ async function send() {
   } catch (err) {
     bubble.textContent = "⚠️ " + err.message;
   } finally {
+    bubble.classList.remove("streaming");
     busy = false; $("send").disabled = false;
     loadConversationList();
     $("input").focus();
@@ -318,13 +779,34 @@ $("attach").onclick = () => $("file-input").click();
 // ---------------- Other controls ----------------
 function autoGrow() { const t = $("input"); t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
 $("input").addEventListener("input", autoGrow);
+// On touch keyboards Enter is a return key, so there it inserts a newline
+// and sending is done with the button instead.
+const isTouch = window.matchMedia("(pointer: coarse)").matches;
 $("input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  if (e.key === "Enter" && !e.shiftKey && !isTouch) { e.preventDefault(); send(); }
 });
 $("send").onclick = send;
 $("new-chat").onclick = newChat;
-$("menu-btn").onclick = () => $("sidebar").classList.toggle("open");
+$("menu-btn").onclick = () => setNav(!$("sidebar").classList.contains("open"));
+$("scrim").onclick = () => setNav(false);
 $("settings-btn").onclick = () => $("settings").classList.toggle("open");
+
+// Theme: an explicit choice wins and is remembered; otherwise follow the system.
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  $("theme-toggle").title = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+}
+$("theme-toggle").onclick = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  try { localStorage.setItem("theme", next); } catch {}
+  applyTheme(next);
+};
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+  let stored = null;
+  try { stored = localStorage.getItem("theme"); } catch {}
+  if (!stored) applyTheme(e.matches ? "dark" : "light");
+});
+applyTheme(document.documentElement.dataset.theme);
 
 $("model-input").addEventListener("change", async () => {
   const model = $("model-input").value.trim();
