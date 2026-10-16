@@ -1,5 +1,5 @@
 """
-Simple ChatGPT-style chat app - backend (FastAPI + OpenRouter + SQLite).
+Simple ChatGPT-style chat app - backend (FastAPI + OpenRouter + Postgres).
 
 Run it:
     uvicorn app:app --reload
@@ -7,20 +7,21 @@ Then open http://localhost:8000 in your browser.
 
 How it works, in one paragraph:
 The model API is stateless - it remembers nothing between calls. So we store
-every conversation in a small SQLite database (chats.db). Each time you send a
-message, we save it, load the recent history of that conversation, send the
-whole history to the model, stream the reply back to the browser word by word,
-and finally save the reply too.
+every conversation in Postgres. Each time you send a message, we save it, load
+the recent history of that conversation, send the whole history to the model,
+stream the reply back to the browser word by word, and finally save the reply
+too.
 """
 
 import json
 import os
-import sqlite3
 import time
 from pathlib import Path
 
 import httpx
 import openai
+import psycopg2
+import psycopg2.extras
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -38,10 +39,18 @@ DEFAULT_SYSTEM_PROMPT = os.getenv("DEFAULT_SYSTEM_PROMPT", "You are a helpful as
 # Only the most recent N messages are sent to the model, so long chats
 # don't overflow the model's context window or keep getting more expensive.
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "20"))
+# Vercel's own Postgres integration injects POSTGRES_URL; a plain DATABASE_URL
+# works for any other Postgres provider (Neon, Supabase, Railway, local, ...).
+DATABASE_URL = os.getenv("POSTGRES_URL", "").strip() or os.getenv("DATABASE_URL", "").strip()
 
 if not OPENROUTER_API_KEY:
     raise RuntimeError(
         "OPENROUTER_API_KEY is missing. Copy .env.example to .env and put your key in it."
+    )
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL (or POSTGRES_URL) is missing. Create a Postgres database and "
+        "set its connection string in .env (local) or your host's env vars (deployed)."
     )
 
 client = OpenAI(
@@ -52,7 +61,6 @@ client = OpenAI(
 
 
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "chats.db"
 MAX_IMAGES_PER_MESSAGE = 4
 MAX_IMAGE_DATA_URL_LENGTH = 8_000_000  # about a 5-6 MB image once base64-encoded
 
@@ -60,22 +68,24 @@ app = FastAPI(title="Simple Chat App")
 
 
 # ---------------------------------------------------------------------------
-# 2. Database helpers (SQLite = one local file, no server to install)
+# 2. Database helpers (Postgres - serverless hosts like Vercel give functions
+#    a read-only, throwaway filesystem, so a local SQLite file won't persist)
 # ---------------------------------------------------------------------------
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # lets us read columns by name: row["title"]
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return psycopg2.connect(DATABASE_URL)
 
 
 def db_execute(sql, params=()):
-    """Run an INSERT/UPDATE/DELETE. Returns the new row's id for INSERTs."""
+    """Run an INSERT/UPDATE/DELETE. For INSERTs, end the SQL with RETURNING id."""
     conn = get_db()
     try:
-        cur = conn.execute(sql, params)
-        conn.commit()
-        return cur.lastrowid
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            conn.commit()
+            if cur.description:
+                row = cur.fetchone()
+                return row[0] if row else None
+            return None
     finally:
         conn.close()
 
@@ -83,7 +93,9 @@ def db_execute(sql, params=()):
 def db_fetch_all(sql, params=()):
     conn = get_db()
     try:
-        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            return [dict(row) for row in cur.fetchall()]
     finally:
         conn.close()
 
@@ -96,27 +108,28 @@ def db_fetch_one(sql, params=()):
 def init_db():
     conn = get_db()
     try:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS conversations (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                title         TEXT NOT NULL,
-                model         TEXT NOT NULL,
-                system_prompt TEXT NOT NULL,
-                created_at    REAL NOT NULL,
-                updated_at    REAL NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS messages (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                conversation_id INTEGER NOT NULL
-                                REFERENCES conversations(id) ON DELETE CASCADE,
-                role            TEXT NOT NULL,          -- 'user' or 'assistant'
-                text            TEXT NOT NULL,
-                images          TEXT NOT NULL DEFAULT '[]',  -- JSON list of data URLs
-                created_at      REAL NOT NULL
-            );
-            """
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id            SERIAL PRIMARY KEY,
+                    title         TEXT NOT NULL,
+                    model         TEXT NOT NULL,
+                    system_prompt TEXT NOT NULL,
+                    created_at    DOUBLE PRECISION NOT NULL,
+                    updated_at    DOUBLE PRECISION NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS messages (
+                    id              SERIAL PRIMARY KEY,
+                    conversation_id INTEGER NOT NULL
+                                    REFERENCES conversations(id) ON DELETE CASCADE,
+                    role            TEXT NOT NULL,          -- 'user' or 'assistant'
+                    text            TEXT NOT NULL,
+                    images          TEXT NOT NULL DEFAULT '[]',  -- JSON list of data URLs
+                    created_at      DOUBLE PRECISION NOT NULL
+                );
+                """
+            )
         conn.commit()
     finally:
         conn.close()
@@ -126,7 +139,7 @@ init_db()
 
 
 def get_conversation_or_404(conv_id):
-    conv = db_fetch_one("SELECT * FROM conversations WHERE id = ?", (conv_id,))
+    conv = db_fetch_one("SELECT * FROM conversations WHERE id = %s", (conv_id,))
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
@@ -249,7 +262,7 @@ def create_conversation(body: NewConversation):
     now = time.time()
     conv_id = db_execute(
         "INSERT INTO conversations (title, model, system_prompt, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "VALUES (%s, %s, %s, %s, %s) RETURNING id",
         ("New chat", model, system_prompt, now, now),
     )
     return get_conversation_or_404(conv_id)
@@ -260,7 +273,7 @@ def get_conversation(conv_id: int):
     conv = get_conversation_or_404(conv_id)
     messages = db_fetch_all(
         "SELECT id, role, text, images, created_at FROM messages "
-        "WHERE conversation_id = ? ORDER BY id",
+        "WHERE conversation_id = %s ORDER BY id",
         (conv_id,),
     )
     for m in messages:
@@ -273,18 +286,18 @@ def get_conversation(conv_id: int):
 def update_conversation(conv_id: int, body: ConversationUpdate):
     get_conversation_or_404(conv_id)
     if body.title is not None:
-        db_execute("UPDATE conversations SET title = ? WHERE id = ?", (body.title.strip() or "New chat", conv_id))
+        db_execute("UPDATE conversations SET title = %s WHERE id = %s", (body.title.strip() or "New chat", conv_id))
     if body.model is not None and body.model.strip():
-        db_execute("UPDATE conversations SET model = ? WHERE id = ?", (body.model.strip(), conv_id))
+        db_execute("UPDATE conversations SET model = %s WHERE id = %s", (body.model.strip(), conv_id))
     if body.system_prompt is not None:
-        db_execute("UPDATE conversations SET system_prompt = ? WHERE id = ?", (body.system_prompt, conv_id))
+        db_execute("UPDATE conversations SET system_prompt = %s WHERE id = %s", (body.system_prompt, conv_id))
     return get_conversation_or_404(conv_id)
 
 
 @app.delete("/api/conversations/{conv_id}")
 def delete_conversation(conv_id: int):
     get_conversation_or_404(conv_id)
-    db_execute("DELETE FROM conversations WHERE id = ?", (conv_id,))  # messages go too (CASCADE)
+    db_execute("DELETE FROM conversations WHERE id = %s", (conv_id,))  # messages go too (CASCADE)
     return {"deleted": conv_id}
 
 
@@ -307,17 +320,17 @@ def send_message(conv_id: int, msg: NewMessage):
     # Step 1: save the user's message.
     now = time.time()
     db_execute(
-        "INSERT INTO messages (conversation_id, role, text, images, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO messages (conversation_id, role, text, images, created_at) VALUES (%s, %s, %s, %s, %s)",
         (conv_id, "user", text, json.dumps(msg.images), now),
     )
     # Name the chat after its first message, like ChatGPT does.
     if conv["title"] == "New chat":
         title = text[:50] or "Image chat"
-        db_execute("UPDATE conversations SET title = ? WHERE id = ?", (title, conv_id))
+        db_execute("UPDATE conversations SET title = %s WHERE id = %s", (title, conv_id))
 
     # Step 2: build what we send - system prompt + the most recent messages.
     recent = db_fetch_all(
-        "SELECT role, text, images FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT ?",
+        "SELECT role, text, images FROM messages WHERE conversation_id = %s ORDER BY id DESC LIMIT %s",
         (conv_id, MAX_HISTORY_MESSAGES),
     )
     recent.reverse()  # oldest first
@@ -349,9 +362,9 @@ def send_message(conv_id: int, msg: NewMessage):
             if reply:
                 db_execute(
                     "INSERT INTO messages (conversation_id, role, text, images, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "VALUES (%s, %s, %s, %s, %s)",
                     (conv_id, "assistant", reply, "[]", time.time()),
                 )
-            db_execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (time.time(), conv_id))
+            db_execute("UPDATE conversations SET updated_at = %s WHERE id = %s", (time.time(), conv_id))
 
     return StreamingResponse(generate(), media_type="text/plain; charset=utf-8")
