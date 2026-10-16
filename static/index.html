@@ -618,6 +618,24 @@ async function api(path, options = {}) {
   return res;
 }
 function scrollToBottom() { const m = $("messages"); m.scrollTop = m.scrollHeight; }
+
+// ---------------- Analytics ----------------
+// Loaded only when the server supplies a measurement ID, so local runs
+// send nothing. Message text, replies and prompts are never sent.
+function loadAnalytics(id) {
+  if (!id) return;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function () { window.dataLayer.push(arguments); };
+  gtag("js", new Date());
+  gtag("config", id);
+  const s = document.createElement("script");
+  s.async = true;
+  s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(id);
+  document.head.appendChild(s);
+}
+function track(name, params) {
+  if (typeof window.gtag === "function") window.gtag("event", name, params || {});
+}
 function setNav(open) {
   $("sidebar").classList.toggle("open", open);
   document.body.classList.toggle("nav-open", open);
@@ -713,6 +731,7 @@ async function send() {
   addMessage("user", text, images);
   const bubble = addMessage("assistant", "");
   bubble.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+  track("message_sent", { model, has_images: images.length > 0, image_count: images.length });
 
   try {
     // First message of a new chat: create the conversation.
@@ -722,6 +741,7 @@ async function send() {
         body: JSON.stringify({ model, system_prompt: $("system-prompt").value }),
       })).json();
       currentId = conv.id;
+      track("conversation_created", { model });
     }
 
     // Send the message and read the reply as it streams in.
@@ -743,6 +763,7 @@ async function send() {
     if (!reply) bubble.textContent = "(No reply received.)";
   } catch (err) {
     bubble.textContent = "⚠️ " + err.message;
+    track("reply_error", { message: err.message });
   } finally {
     bubble.classList.remove("streaming");
     busy = false; $("send").disabled = false;
@@ -800,6 +821,7 @@ $("theme-toggle").onclick = () => {
   const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
   try { localStorage.setItem("theme", next); } catch {}
   applyTheme(next);
+  track("theme_changed", { theme: next });
 };
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
   let stored = null;
@@ -813,6 +835,7 @@ $("model-input").addEventListener("change", async () => {
   updateModelNote();
   if (!model) return;
   rememberModel(model);
+  track("model_changed", { model });
   if (currentId !== null) {
     await api(`/api/conversations/${currentId}`, { method: "PATCH", body: JSON.stringify({ model }) });
   }
@@ -830,6 +853,7 @@ $("save-settings").onclick = async () => {
 // ---------------- Start-up ----------------
 (async function init() {
   config = await (await api("/api/config")).json();
+  loadAnalytics(config.ga_measurement_id);
   try {
     models = (await (await api("/api/models")).json()).models;
     $("model-list").innerHTML = models

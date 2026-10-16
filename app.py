@@ -39,6 +39,9 @@ DEFAULT_SYSTEM_PROMPT = os.getenv("DEFAULT_SYSTEM_PROMPT", "You are a helpful as
 # Only the most recent N messages are sent to the model, so long chats
 # don't overflow the model's context window or keep getting more expensive.
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "20"))
+# Google Analytics 4 measurement ID (G-XXXXXXXXXX). Left unset, the page
+# loads no analytics at all - which is what you want for local development.
+GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "").strip()
 # Vercel's own Postgres integration injects POSTGRES_URL; a plain DATABASE_URL
 # works for any other Postgres provider (Neon, Supabase, Railway, local, ...).
 DATABASE_URL = os.getenv("POSTGRES_URL", "").strip() or os.getenv("DATABASE_URL", "").strip()
@@ -209,7 +212,11 @@ def home():
 
 @app.get("/api/config")
 def get_config():
-    return {"default_model": DEFAULT_MODEL,"default_system_prompt": DEFAULT_SYSTEM_PROMPT,}
+    return {
+        "default_model": DEFAULT_MODEL,
+        "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
+        "ga_measurement_id": GA_MEASUREMENT_ID,
+    }
 
 
 _models_cache = {"models": None, "fetched_at": 0.0}

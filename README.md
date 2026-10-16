@@ -60,6 +60,28 @@ minute — paste it into `DATABASE_URL`.
    (your `.env` file is gitignored, so it never reaches Vercel on its own).
 4. Redeploy.
 
+## Analytics (optional)
+
+Set `GA_MEASUREMENT_ID` to a Google Analytics 4 measurement ID (`G-XXXXXXXXXX`)
+and the page loads GA4 and reports usage. Leave it unset — as `.env.example`
+does — and no analytics code loads at all, so local testing never reaches your
+stats.
+
+Beyond the automatic pageviews, these custom events are sent:
+
+|Event|Parameters|
+|-|-|
+|`conversation_created`|`model`|
+|`message_sent`|`model`, `has_images`, `image_count`|
+|`model_changed`|`model`|
+|`theme_changed`|`theme`|
+|`reply_error`|`message`|
+
+Message text, replies, system prompts, image data and conversation titles are
+never sent. To break reports down by `model` you must register it as a custom
+dimension in GA4 (**Admin → Custom definitions → Create custom dimension**,
+event-scoped, parameter `model`); it only collects data from that point on.
+
 **Known limitation:** Vercel's Python functions buffer the full response
 before returning it, so replies will appear all at once instead of streaming
 in word by word, even though the code streams internally. This only affects
